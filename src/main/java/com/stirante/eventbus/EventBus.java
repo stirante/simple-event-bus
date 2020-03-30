@@ -13,9 +13,9 @@ import java.util.concurrent.locks.ReentrantLock;
 public class EventBus {
 
     private static final ExecutorService EXECUTOR_SERVICE = Executors.newSingleThreadExecutor();
-    private static ReentrantLock lock = new ReentrantLock();
-    private static List<SubscriberElement> listeners = new ArrayList<>();
-    private static Map<Class<? extends EventExecutor>, EventExecutor> eventExecutorMap = new HashMap<>();
+    private static final ReentrantLock lock = new ReentrantLock();
+    private static final List<SubscriberElement> listeners = new ArrayList<>();
+    private static final Map<Class<? extends EventExecutor>, EventExecutor> eventExecutorMap = new HashMap<>();
 
     /**
      * Registers all subscribers in provided object instance
