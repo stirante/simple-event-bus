@@ -5,31 +5,61 @@ import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.util.*;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.locks.ReentrantLock;
 
 public class EventBus {
 
+    private static final ExecutorService EXECUTOR_SERVICE = Executors.newSingleThreadExecutor();
+    private static ReentrantLock lock = new ReentrantLock();
     private static List<SubscriberElement> listeners = new ArrayList<>();
     private static Map<Class<? extends EventExecutor>, EventExecutor> eventExecutorMap = new HashMap<>();
 
-    public static void register(Object obj) {
+    /**
+     * Registers all subscribers in provided object instance
+     *
+     * @param obj object instance
+     * @return CompletableFuture, which finishes when all subscribers have been registered
+     */
+    public static CompletableFuture<Void> register(Object obj) {
+        List<CompletableFuture<?>> futures = new ArrayList<>();
         for (Method method : obj.getClass().getMethods()) {
             Subscribe annotation = method.getAnnotation(Subscribe.class);
             if (annotation != null) {
-                registerListener(method, annotation, obj);
+                futures.add(registerListener(method, annotation, obj));
             }
         }
+        return CompletableFuture.allOf(futures.toArray(new CompletableFuture[0]));
     }
 
-    public static void register(Class<?> obj) {
+    /**
+     * Registers all static subscribers in provided class
+     *
+     * @param obj class
+     * @return CompletableFuture, which finishes when all subscribers have been registered
+     */
+    public static CompletableFuture<Void> register(Class<?> obj) {
+        List<CompletableFuture<?>> futures = new ArrayList<>();
         for (Method method : obj.getMethods()) {
             Subscribe annotation = method.getAnnotation(Subscribe.class);
             if (annotation != null && Modifier.isStatic(method.getModifiers())) {
-                registerListener(method, annotation, null);
+                futures.add(registerListener(method, annotation, null));
             }
         }
+        return CompletableFuture.allOf(futures.toArray(new CompletableFuture[0]));
     }
 
-    private static void registerListener(Method method, Subscribe annotation, Object obj) {
+    /**
+     * Helper method for registering single method as a subscriber
+     *
+     * @param method     method
+     * @param annotation method's @Subscriber annotation
+     * @param obj        object instance or null, if methods is static
+     * @return CompletableFuture, which finishes after this method registration
+     */
+    private static CompletableFuture<?> registerListener(Method method, Subscribe annotation, Object obj) {
         if (method.getParameterCount() > 1) {
             throw new IllegalArgumentException(
                     "Subscriber method \"" + method.toString() + "\" cannot have more than one parameter");
@@ -46,9 +76,19 @@ public class EventBus {
         s.object = obj == null ? null : new WeakReference<>(obj);
         s.isStatic = Modifier.isStatic(method.getModifiers());
         s.priority = annotation.priority();
-        listeners.add(s);
+        return CompletableFuture.runAsync(() -> {
+            lock.lock();
+            listeners.add(s);
+            lock.unlock();
+        }, EXECUTOR_SERVICE);
     }
 
+    /**
+     * Returns event executor for specified class
+     *
+     * @param cls EventExecutor class
+     * @return EventExecutor object implementation
+     */
     private static EventExecutor getEventExecutor(Class<? extends EventExecutor> cls) {
         if (!eventExecutorMap.containsKey(cls)) {
             try {
@@ -63,33 +103,88 @@ public class EventBus {
         return eventExecutorMap.get(cls);
     }
 
-    public static void unregister(Object obj) {
-        listeners.removeIf(subscriberElement -> subscriberElement.isInvalid() ||
-                (subscriberElement.object != null && subscriberElement.object.get() == obj));
+    /**
+     * Unregisters all subscriber methods from specified object instance
+     *
+     * @param obj object instance
+     * @return CompletableFuture, which finishes after unregistering all subscriber methods of this object instance
+     */
+    public static CompletableFuture<Void> unregister(Object obj) {
+        return CompletableFuture.runAsync(() -> {
+            lock.lock();
+            listeners.removeIf(subscriberElement -> subscriberElement.isInvalid() ||
+                    (subscriberElement.object != null && subscriberElement.object.get() == obj));
+            lock.unlock();
+        }, EXECUTOR_SERVICE);
     }
 
-    public static void unregister(Class<?> obj) {
-        listeners.removeIf(subscriberElement -> subscriberElement.isInvalid() ||
-                subscriberElement.method.getClass() == obj);
+
+    /**
+     * Unregisters all subscriber methods from specified class
+     *
+     * @param obj class
+     * @return CompletableFuture, which finishes after unregistering all subscriber methods of this class
+     */
+    public static CompletableFuture<Void> unregister(Class<?> obj) {
+        return CompletableFuture.runAsync(() -> {
+            lock.lock();
+            listeners.removeIf(subscriberElement -> subscriberElement.isInvalid() ||
+                    subscriberElement.method.getClass() == obj);
+            lock.unlock();
+        }, EXECUTOR_SERVICE);
     }
 
-    public static void publish(String target, BusEvent event) {
-        listeners.stream()
+    /**
+     * Publishes an event to all subscribers of the target event
+     * @param target target event type
+     * @param event event data
+     * @return CompletableFuture, which finishes after all subscribers have processed the event
+     */
+    @SuppressWarnings("unchecked")
+    public static CompletableFuture<Void> publish(String target, BusEvent event) {
+        lock.lock();
+        CompletableFuture<Void>[] futures = listeners.stream()
                 .filter(subscriberElement -> subscriberElement.target.equals(target) && !subscriberElement.isInvalid())
                 .sorted(Comparator.comparingInt(subscriberElement -> subscriberElement.priority.getValue()))
-                .forEach(subscriberElement -> subscriberElement.invoke(event));
+                .map(subscriberElement -> subscriberElement.invoke(event))
+                .toArray(CompletableFuture[]::new);
+        lock.unlock();
+        return CompletableFuture.allOf(futures);
     }
 
-    public static void publish(String target) {
-        publish(target, null);
+    /**
+     * Publishes an event to all subscribers of the target event
+     * @param target target event type
+     * @return CompletableFuture, which finishes after all subscribers have processed the event
+     */
+    public static CompletableFuture<Void> publish(String target) {
+        return publish(target, null);
     }
 
-    public static void clearAll() {
-        listeners.clear();
+    /**
+     * Unregisters all subscriber methods
+     * @return CompletableFuture, which finishes after all subscribers have been unregistered
+     */
+    public static CompletableFuture<Void> clearAll() {
+        return CompletableFuture.runAsync(() -> {
+            lock.lock();
+            listeners.clear();
+            lock.unlock();
+        }, EXECUTOR_SERVICE);
     }
 
-    public static void cleanUp() {
-        listeners.removeIf(SubscriberElement::isInvalid);
+
+    /**
+     * Unregisters all invalid subscriber methods.
+     * A subscriber is invalid, when it's object instance has been removed by garbage collector.
+     * @return CompletableFuture, which finishes after all invalid subscriber methods have been unregistered
+     */
+    public static CompletableFuture<Void> cleanUp() {
+        return CompletableFuture.runAsync(() -> {
+            lock.lock();
+            listeners.removeIf(SubscriberElement::isInvalid);
+            lock.unlock();
+        }, EXECUTOR_SERVICE);
     }
 
     private static class SubscriberElement {
@@ -100,7 +195,7 @@ public class EventBus {
         private boolean isStatic;
         private EventPriority priority;
 
-        private void invoke(BusEvent event) {
+        private CompletableFuture<Void> invoke(BusEvent event) {
             Runnable run;
             if (method.getParameterCount() == 0) {
                 run = () -> {
@@ -128,7 +223,7 @@ public class EventBus {
                     }
                 };
             }
-            eventExecutor.execute(run);
+            return eventExecutor.execute(run);
         }
 
         private boolean isInvalid() {

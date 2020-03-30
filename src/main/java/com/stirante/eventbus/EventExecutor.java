@@ -1,9 +1,9 @@
 package com.stirante.eventbus;
 
+import java.util.concurrent.CompletableFuture;
+
 public interface EventExecutor {
 
-    EventExecutor DEFAULT = Runnable::run;
-
-    void execute(Runnable runnable);
+    CompletableFuture<Void> execute(Runnable runnable);
 
 }

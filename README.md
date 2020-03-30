@@ -13,7 +13,7 @@ Written mainly for my other projects.
 
 ## Setup
 
-This project is available on [Jitpack](https://jitpack.io/#stirante/simple-event-bus/1.0.0)
+This project is available on [Jitpack](https://jitpack.io/#stirante/simple-event-bus/1.0.1)
 
 ### Gradle
 
@@ -32,7 +32,7 @@ Add the project as a dependency:
 
 ```java
 dependencies {
-	compile 'com.github.stirante:simple-event-bus:1.0.0'
+	compile 'com.github.stirante:simple-event-bus:1.0.1'
 }
 ```
 
@@ -55,7 +55,7 @@ Add the project as a dependency:
 <dependency>
     <groupId>com.github.stirante</groupId>
     <artifactId>simple-event-bus</artifactId>
-    <version>1.0.0</version>
+    <version>1.0.1</version>
 </dependency>
 ```
 
@@ -76,9 +76,9 @@ Subscribing to an event:
 public class Example {
     public static void main(String[] args){
         // Registering static methods using class reference
-        EventBus.register(Example.class);
+        EventBus.register(Example.class).join();
         // Registering instance methods using an instance reference
-        EventBus.register(new Example());
+        EventBus.register(new Example()).join();
     }
 
     @Subscribe("test-event")
@@ -95,6 +95,10 @@ public class Example {
 ```
 
 Subscriber can specify event executor (same thread, async or a custom implementation) and priority (highest to lowest. Order is not guaranteed when using async event executor).
+
+### Tips
+ - All methods return `CompletableFuture<Void>`, which finishes after specified operation has been finished. To make sure, the object has been registered/unregistered, use `join` method to wait for completion.
+ - You can call `register`/`unregister`/`publish` methods inside of a subscriber method, but avoid using `join` method inside subscriber method, which may cause a deadlock.
 
 ## Contributing
 All contributions are appreciated.

@@ -8,35 +8,35 @@ public class EventBusTest {
 
     @BeforeEach
     public void clearEventBus() {
-        EventBus.clearAll();
+        EventBus.clearAll().join();
     }
 
     @Test
     public void registering_method_with_2_parameters_throws_error() {
-        Assertions.assertThrows(IllegalArgumentException.class, () -> EventBus.register(new Subscriber2Parameters()));
+        Assertions.assertThrows(IllegalArgumentException.class, () -> EventBus.register(new Subscriber2Parameters()).join());
     }
 
     @Test
     public void registering_method_with_string_parameter_throws_error() {
-        Assertions.assertThrows(IllegalArgumentException.class, () -> EventBus.register(new SubscriberWrongParameter()));
+        Assertions.assertThrows(IllegalArgumentException.class, () -> EventBus.register(new SubscriberWrongParameter()).join());
     }
 
     @Test
     public void registering_method_with_good_parameter_passes() {
-        EventBus.register(new SubscriberGoodParameter());
+        EventBus.register(new SubscriberGoodParameter()).join();
     }
 
     @Test
     public void registering_method_with_no_parameter_passes() {
-        EventBus.register(new SubscriberNoParameter());
+        EventBus.register(new SubscriberNoParameter()).join();
     }
 
     @Test
     public void publishing_event_triggers_subscriber() {
         SubscriberOk subscriber = new SubscriberOk();
-        EventBus.register(subscriber);
+        EventBus.register(subscriber).join();
 
-        EventBus.publish("test");
+        EventBus.publish("test").join();
 
         Assertions.assertTrue(subscriber.received);
     }
@@ -45,10 +45,10 @@ public class EventBusTest {
     public void publishing_event_triggers_subscribers_in_specified_order() {
         SubscriberOk subscriber = new SubscriberOk();
         SubscriberPriority subscriber1 = new SubscriberPriority(subscriber);
-        EventBus.register(subscriber);
-        EventBus.register(subscriber1);
+        EventBus.register(subscriber).join();
+        EventBus.register(subscriber1).join();
 
-        EventBus.publish("test");
+        EventBus.publish("test").join();
 
         Assertions.assertTrue(subscriber1.received && subscriber.received);
     }
@@ -105,4 +105,5 @@ public class EventBusTest {
             received = !ok.received;
         }
     }
+
 }
