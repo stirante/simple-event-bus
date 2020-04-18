@@ -6,12 +6,29 @@
 
     <groupId>com.stirante</groupId>
     <artifactId>simple-event-bus</artifactId>
-    <version>1.0.1</version>
+    <version>1.0.1-SNAPSHOT</version>
 
     <properties>
         <maven.compiler.target>1.8</maven.compiler.target>
         <maven.compiler.source>1.8</maven.compiler.source>
     </properties>
+
+    <distributionManagement>
+        <repository>
+            <id>stirante-nexus-releases</id>
+            <url>https://nexus.stirante.com/repository/maven-releases/</url>
+        </repository>
+        <snapshotRepository>
+            <id>stirante-nexus-snapshots</id>
+            <url>https://nexus.stirante.com/repository/maven-snapshots/</url>
+        </snapshotRepository>
+    </distributionManagement>
+
+    <scm>
+        <connection>scm:git:git@github.com:stirante/lol-client-java-api.git</connection>
+        <url>scm:git:git@github.com:stirante/lol-client-java-api.git</url>
+        <developerConnection>scm:git:git@github.com:stirante/lol-client-java-api.git</developerConnection>
+    </scm>
 
     <dependencies>
         <dependency>
