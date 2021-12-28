@@ -209,10 +209,7 @@ public class EventBus {
                 };
             }
             else {
-                if (event == null) {
-                    throw new IllegalArgumentException("This subscriber requires a bus event");
-                }
-                if (!method.getParameterTypes()[0].isAssignableFrom(event.getClass())) {
+                if (event != null && !method.getParameterTypes()[0].isAssignableFrom(event.getClass())) {
                     throw new IllegalArgumentException(
                             "Incompatible parameters. Expected \"" + method.getParameterTypes()[0].toGenericString() +
                                     "\" but got \"" + event.getClass().toGenericString() + "\"");
