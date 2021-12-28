@@ -4,6 +4,7 @@ import java.lang.ref.WeakReference;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
+import java.lang.reflect.ParameterizedType;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
@@ -62,17 +63,13 @@ public class EventBus {
     private static CompletableFuture<?> registerListener(Method method, Subscribe annotation, Object obj) {
         if (method.getParameterCount() > 1) {
             throw new IllegalArgumentException(
-                    "Subscriber method \"" + method.toString() + "\" cannot have more than one parameter");
-        }
-        if (method.getParameterCount() == 1 &&
-                !BusEvent.class.isAssignableFrom(method.getParameterTypes()[0])) {
-            throw new IllegalArgumentException("Subscriber method \"" + method.toString() +
-                    "\" parameter must be an implementation of EventBus");
+                    "Subscriber method \"" + method + "\" cannot have more than one parameter");
         }
         SubscriberElement s = new SubscriberElement();
         s.method = method;
         s.eventExecutor = getEventExecutor(annotation.eventExecutor());
         s.target = annotation.value();
+        s.type = method.getParameterCount() == 0 ? null : method.getParameterTypes()[0];
         s.object = obj == null ? null : new WeakReference<>(obj);
         s.isStatic = Modifier.isStatic(method.getModifiers());
         s.priority = annotation.priority();
@@ -136,15 +133,16 @@ public class EventBus {
 
     /**
      * Publishes an event to all subscribers of the target event
+     *
      * @param target target event type
-     * @param event event data
+     * @param event  event data
      * @return CompletableFuture, which finishes after all subscribers have processed the event
      */
     @SuppressWarnings("unchecked")
-    public static CompletableFuture<Void> publish(String target, BusEvent event) {
+    public static CompletableFuture<Void> publish(String target, Object event) {
         lock.lock();
         CompletableFuture<Void>[] futures = listeners.stream()
-                .filter(subscriberElement -> subscriberElement.target.equals(target) && !subscriberElement.isInvalid())
+                .filter(subscriberElement -> subscriberElement.accepts(target, event) && !subscriberElement.isInvalid())
                 .sorted(Comparator.comparingInt(subscriberElement -> subscriberElement.priority.getValue()))
                 .map(subscriberElement -> subscriberElement.invoke(event))
                 .toArray(CompletableFuture[]::new);
@@ -154,6 +152,7 @@ public class EventBus {
 
     /**
      * Publishes an event to all subscribers of the target event
+     *
      * @param target target event type
      * @return CompletableFuture, which finishes after all subscribers have processed the event
      */
@@ -163,6 +162,7 @@ public class EventBus {
 
     /**
      * Unregisters all subscriber methods
+     *
      * @return CompletableFuture, which finishes after all subscribers have been unregistered
      */
     public static CompletableFuture<Void> clearAll() {
@@ -177,6 +177,7 @@ public class EventBus {
     /**
      * Unregisters all invalid subscriber methods.
      * A subscriber is invalid, when it's object instance has been removed by garbage collector.
+     *
      * @return CompletableFuture, which finishes after all invalid subscriber methods have been unregistered
      */
     public static CompletableFuture<Void> cleanUp() {
@@ -188,6 +189,7 @@ public class EventBus {
     }
 
     private static class SubscriberElement {
+        public Class<?> type;
         private String target;
         private EventExecutor eventExecutor;
         private WeakReference<?> object;
@@ -195,7 +197,7 @@ public class EventBus {
         private boolean isStatic;
         private EventPriority priority;
 
-        private CompletableFuture<Void> invoke(BusEvent event) {
+        private CompletableFuture<Void> invoke(Object event) {
             Runnable run;
             if (method.getParameterCount() == 0) {
                 run = () -> {
@@ -240,6 +242,10 @@ public class EventBus {
                     .add("isStatic=" + isStatic)
                     .add("priority=" + priority.name())
                     .toString();
+        }
+
+        public boolean accepts(String target, Object event) {
+            return this.target.equals(target) && (event == null || type == null || type.isAssignableFrom(event.getClass()));
         }
     }
 
